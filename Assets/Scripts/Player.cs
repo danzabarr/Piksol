@@ -34,14 +34,19 @@ namespace Piksol
             if (!isLocalPlayer)
                 camera.enabled = false;
 
-            //if (isLocalPlayer)
-            //{
-            //    Debug.Log("Sending chunk requests");
-            //
-            //    for (int x = -5; x < 5; x++)
-            //        for (int y = -5; y < 5; y++)
-            //            CmdRequestChunk(x, y, 0, 16384);
-            //}
+            if (isLocalPlayer)
+            {
+                Debug.Log("Sending chunk requests");
+            
+                for (int x = -2; x <= 2; x++)
+                    for (int y = -2; y <= 2; y++)
+                    {
+                        CmdRequestChunk(x, y, 4096 * 0, 4096);
+                        CmdRequestChunk(x, y, 4096 * 1, 4096);
+                        CmdRequestChunk(x, y, 4096 * 2, 4096);
+                        CmdRequestChunk(x, y, 4096 * 3, 4096);
+                    }
+            }
         }
         
         [Command]
