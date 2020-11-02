@@ -58,32 +58,21 @@ namespace Piksol
                     target.sharedMesh = block?.Mesh;
             }
         }
-
         
-        [Header("Rotation")]
-        public Transform rotateTransform;
-        public Vector2 rotateSensitivity = Vector2.one;
-
-        [Header("Zoom")]
-        public Transform zoomTransform;
-        public float zoomSensitivity = 1;
-        public float minZoom =  1.5f;
-        public float maxZoom = 10.0f;
-
         private bool[] dragging = new bool[3];
         private Vector3[] dragStart = new Vector3[3];
-
-        
-
-        public Direction outsideFace;
-        public Direction insideFace;
-        public Direction draggingFace;
-        public Plane plane;
-        public Vector3 mouseOnBounds;
-        public Vector3 boundsDrag;
+        private Direction outsideFace;
+        private Direction insideFace;
+        private Direction draggingFace;
+        private Plane boundsPlane;
+        private Plane crossPlane;
+        private Vector3 mouseOnBounds;
+        private Vector3 mouseOnCrossPlane;
+        private Vector3 boundsDrag;
         private Vector3Int startInsets;
         private float hoverVoxelCounter;
         private Vector3Int breakVoxel;
+        private CameraOrbit orbit;
 
         public void RegenerateMesh()
         {
@@ -93,45 +82,23 @@ namespace Piksol
 
         private void Awake()
         {
-            //block = new BlockData(8, 8, 8);
+            Block = new BlockObject(8, 8, 8);
         }
 
         private void Update()
         {
-            #region Camera Controls
+            if (orbit == null)
+                orbit = GetComponent<CameraOrbit>();
 
-            if (Input.GetMouseButton(2))
-            {
-                if (!dragging[2])
-                {
-                    dragging[2] = true;
-                    dragStart[2] = Input.mousePosition;
-                }
-                else
-                {
-                    Vector2 delta = Input.mousePosition - dragStart[2];
+            if (target != null)
+                orbit.target = target.transform;
+            else if (model != null)
+                orbit.target = model.transform;
 
-                    float addYaw = delta.x * rotateSensitivity.x;
-                    float addPitch = -delta.y * rotateSensitivity.y;
-
-                    rotateTransform.localRotation *= Quaternion.Euler(addPitch, addYaw, 0);
-
-                    dragStart[2] = Input.mousePosition;
-                }
-
-            }
+            if (Block == null)
+                orbit.pan = Vector3.zero;
             else
-            {
-                dragging[2] = false;
-            }
-
-            if (Input.mouseScrollDelta.y != 0)
-            {
-                float newZoom = Mathf.Clamp(zoomTransform.localPosition.z + Input.mouseScrollDelta.y * zoomSensitivity, -maxZoom, -minZoom);
-                zoomTransform.localPosition = new Vector3(0, 0, newZoom);
-            }
-
-            #endregion
+                orbit.pan = Block.Center;
 
             #region Voxel Cast
 
@@ -160,7 +127,7 @@ namespace Piksol
 
                 bool entered = false;
 
-                VoxelTraverse.Ray(transformedRay, maxRay, Vector3.one * BlockObject.VoxelSize, Vector3.zero, (Vector3Int voxel, Vector3 intersection) =>
+                VoxelTraverse.Ray(transformedRay, maxRay, Vector3.one * BlockObject.VoxelSize, Vector3.zero, (Vector3Int voxel, Vector3 intersection, Vector3 normal) =>
                 {
                     if (voxel.x >= Block.LowerInset.x && voxel.x < Block.Size.x - Block.UpperInset.x
                      && voxel.y >= Block.LowerInset.y && voxel.y < Block.Size.y - Block.UpperInset.y
@@ -281,8 +248,8 @@ namespace Piksol
                             if (Input.GetMouseButtonDown(0) && outsideFace != Direction.None)
                             {
                                 draggingFace = outsideFace;
-                                plane = FacePlane(draggingFace);
-                                if (plane.Raycast(ray, out float enter))
+                                boundsPlane = FacePlane(draggingFace);
+                                if (boundsPlane.Raycast(ray, out float enter))
                                     mouseOnBounds = ray.GetPoint(enter);
 
                                 if (draggingFace == Direction.North || draggingFace == Direction.East || draggingFace == Direction.Up)
@@ -294,15 +261,14 @@ namespace Piksol
                         }
                         if (dragging[0] && draggingFace != Direction.None)
                         {
-                            Plane crossPlane = new Plane(Vector3.Cross(plane.normal, transform.up), mouseOnBounds);
+                            crossPlane = new Plane(Vector3.Cross(transform.right, boundsPlane.normal), mouseOnBounds);
                             if (crossPlane.Raycast(ray, out float crossEnter))
                             {
-                                Vector3 mouseOnCrossPlane = ray.GetPoint(crossEnter);
-                                boundsDrag = Vector3.Project(mouseOnCrossPlane - mouseOnBounds, plane.normal);
+                                mouseOnCrossPlane = ray.GetPoint(crossEnter);
+                                boundsDrag = Vector3.Project(mouseOnCrossPlane - mouseOnBounds, boundsPlane.normal);
                                 Vector3 drag = boundsDrag;
-                                drag.x /= target.transform.lossyScale.x;
-                                drag.y /= target.transform.lossyScale.y;
-                                drag.z /= target.transform.lossyScale.z;
+
+                                drag = target.transform.InverseTransformVector(drag);
 
                                 if (draggingFace == Direction.North || draggingFace == Direction.East || draggingFace == Direction.Up)
                                     Block.UpperInset = startInsets + Vector3Int.RoundToInt(-drag / BlockObject.VoxelSize);
@@ -483,14 +449,19 @@ namespace Piksol
 
                     if (highlightFace == Direction.East)
                         properties.SetVector("_HighlightEUN", new Vector3(1, 0, 0));
+
                     else if (highlightFace == Direction.Up)
                         properties.SetVector("_HighlightEUN", new Vector3(0, 1, 0));
+
                     else if (highlightFace == Direction.North)
                         properties.SetVector("_HighlightEUN", new Vector3(0, 0, 1));
+
                     else if (highlightFace == Direction.West)
                         properties.SetVector("_HighlightWDS", new Vector3(1, 0, 0));
+
                     else if (highlightFace == Direction.Down)
                         properties.SetVector("_HighlightWDS", new Vector3(0, 1, 0));
+
                     else if (highlightFace == Direction.South)
                         properties.SetVector("_HighlightWDS", new Vector3(0, 0, 1));
 
@@ -507,14 +478,13 @@ namespace Piksol
                 }
             }
 
-
             if (model != null)
             {
                 foreach(Bone bone in model)
                 {
                     if (bone.Block == Block)
                     {
-                        DrawBlockGrid(bone.Block, bone.transform, outsideFace);
+                        DrawBlockGrid(bone.Block, bone.transform, dragging[0] ? draggingFace : outsideFace);
                     }
                     else
                     {
@@ -524,7 +494,7 @@ namespace Piksol
             }
             else
             {
-                DrawBlockGrid(Block, target.transform, outsideFace);
+                DrawBlockGrid(Block, target.transform, dragging[0] ? draggingFace : outsideFace);
             }
 
             #endregion
@@ -540,12 +510,12 @@ namespace Piksol
                     {
                         dragging[0] = false;
 
+
                         if (humanoid.RaycastBones(ray, out bone, out _, out _))
                         {
                             target = bone.MeshFilter;
                             Block = bone.Block;
                             humanoid.Focus(bone);
-                            //mode = Mode.PlacePixel;
                         }
                         else
                         {
@@ -567,16 +537,16 @@ namespace Piksol
 
             #region Focus View
 
-            if (Block != null)
-            {
-                targetPosition = target.transform.position - Block.Origin + ((Vector3)Block.LowerInset + (Vector3)Block.InsetSize / 2f) * BlockObject.VoxelSize;
-            }
-            else if (model != null)
-            {
-                targetPosition = model.transform.position;
-            }
-
-            transform.position = Vector3.Slerp(transform.position, targetPosition, Time.deltaTime * 5);
+            //if (Block != null && target != null)
+            //{
+            //    targetPosition = target.transform.position - Block.Origin + ((Vector3)Block.LowerInset + (Vector3)Block.InsetSize / 2f) * BlockObject.VoxelSize;
+            //}
+            //else if (model != null)
+            //{
+            //    targetPosition = model.transform.position;
+            //}
+            //
+            //transform.position = Vector3.Slerp(transform.position, targetPosition, Time.deltaTime * 5);
 
             #endregion
         }
@@ -619,6 +589,9 @@ namespace Piksol
                 DrawCube(target.transform, (Vector3)v.min * BlockObject.VoxelSize - Block.Origin, (Vector3)v.size * BlockObject.VoxelSize);
             }
 
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(mouseOnBounds, mouseOnCrossPlane);
+            Gizmos.DrawLine(mouseOnBounds, mouseOnBounds + crossPlane.normal);
 
             //Gizmos.color = Color.red;
             //Gizmos.DrawSphere(target.transform.position - Block.Origin + (Block.LowerInset + Vector3.Scale(Block.InsetSize, new Vector3(0, .5f, .5f))) * BlockData.VoxelSize, .0125f);

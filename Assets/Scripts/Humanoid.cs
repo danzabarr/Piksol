@@ -166,7 +166,7 @@ namespace Piksol
             LeftLeg.DrawCube();
             RightLeg.DrawCube();
 
-            if (Raycast.Bones(ray.origin, ray.direction, float.MaxValue, bones, out Bone bone, out Vector3 intersection, out _))
+            if (Geom.RaycastBones(ray.origin, ray.direction, float.MaxValue, bones, out Bone bone, out Vector3 intersection, out _))
             {
                 Gizmos.color = Color.red;
                 bone.DrawCube();
@@ -175,7 +175,7 @@ namespace Piksol
 
         public bool RaycastBones(Ray ray, out Bone bone, out Vector3 intersection, out float distance)
         {
-            return Raycast.Bones(ray.origin, ray.direction, float.MaxValue, bones, out bone, out intersection, out distance);
+            return Geom.RaycastBones(ray.origin, ray.direction, float.MaxValue, bones, out bone, out intersection, out distance);
         }
     }
 

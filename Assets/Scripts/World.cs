@@ -33,14 +33,33 @@ namespace Piksol
             }
         }
 
+        [ContextMenu("Generate Colliders")]
+        public void GenerateColliders()
+        {
+            foreach(Chunk chunk in chunks.Values)
+            {
+                GameObject go = new GameObject();
+                go.transform.parent = transform;
+                go.transform.position = new Vector3(chunk.X * Chunk.Size.x, 0, chunk.Y * Chunk.Size.z);
+                MeshCollider collider = go.AddComponent<MeshCollider>();
+                collider.sharedMesh = chunk.Mesh;
+            }
+        }
+
         private void OnValidate()
         {
             foreach (Chunk chunk in chunks.Values)
                 chunk.GenerateTerrain();
         }
+
         public int ChunksCount => chunks.Count;
         public static Vector3Int World2Block(Vector3 world) => Vector3Int.FloorToInt(world);
-        public static Vector3Int Block2Chunk(Vector3 block) => Vector3Int.FloorToInt(block / 16f);
+        public static Vector3Int Block2Chunk(Vector3 block)
+        {
+            block.x /= Chunk.Size.x;
+            block.z /= Chunk.Size.z;
+            return Vector3Int.FloorToInt(block);
+        }
 
         public int GetBlock(Vector3Int block)
         {
@@ -49,8 +68,8 @@ namespace Piksol
             if (!TryGetChunk(chunk.x, chunk.z, out Chunk c))
                 return -1;
 
-            block.x -= chunk.x * 16;
-            block.z -= chunk.z * 16;
+            block.x -= chunk.x * Chunk.Size.x;
+            block.z -= chunk.z * Chunk.Size.z;
 
             if (block.x < 0 || block.x >= Chunk.Size.x)
                 return -1;
@@ -67,6 +86,16 @@ namespace Piksol
             return blockID == 0;
         }
 
+        public static bool IsCollidable(int blockID)
+        {
+            return blockID != 0;
+        }
+
+        public static float BreakSpeed(int blockID)
+        {
+            return 1;
+        }
+
         public bool SetBlock(Vector3Int block, int id)
         {
             Vector3Int chunk = Block2Chunk(block);
@@ -74,8 +103,8 @@ namespace Piksol
             if (!TryGetChunk(chunk.x, chunk.z, out Chunk c))
                 return false;
 
-            block.x -= chunk.x * 16;
-            block.z -= chunk.z * 16;
+            block.x -= chunk.x * Chunk.Size.x;
+            block.z -= chunk.z * Chunk.Size.z;
 
             c[block.x, block.y, block.z] = id;
 
@@ -150,11 +179,13 @@ namespace Piksol
             }
         }
 
-        public int[] RequestChunkData(int x, int y, int index, int length)
+        public bool RequestChunkData(int x, int y, int index, int length, bool sendAir, out int[] data)
         {
             Chunk chunk = GetOrCreateChunk(x, y);
 
-            return chunk.GetData(index, length);
+            data = chunk.GetData(index, length, out bool isAir);
+
+            return sendAir || !isAir;
         }
     }
 }

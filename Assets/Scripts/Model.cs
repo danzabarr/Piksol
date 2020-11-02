@@ -11,7 +11,7 @@ namespace Piksol
         public void ClearFocus()
         {
             foreach (Bone b in bones)
-                b.gameObject.layer = LayerMask.NameToLayer("Default");
+                b.gameObject.layer = gameObject.layer;
         }
 
         public void Focus(Bone bone)
@@ -19,17 +19,22 @@ namespace Piksol
             foreach (Bone b in bones)
                 b.gameObject.layer = LayerMask.NameToLayer("Fade Out");
             if (bone != null)
-                bone.gameObject.layer = LayerMask.NameToLayer("Default");
+                bone.gameObject.layer = gameObject.layer;
         }
+
         public abstract void ResetPositions();
 
         public IEnumerator<Bone> GetEnumerator()
         {
+            if (bones == null)
+                return null;
             return ((IEnumerable<Bone>)bones).GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
+            if (bones == null)
+                return null;
             return ((IEnumerable<Bone>)bones).GetEnumerator();
         }
     }

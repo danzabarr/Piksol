@@ -46,12 +46,12 @@ namespace Piksol
         public void SetDirty() => dirty = true;
         public int this[int x, int y, int z]
         {
-            get => data[x + Size.x * (y + Size.y * z)];
+            get => data[x + Size.x * (z + Size.z * y)];
             set
             {
-                if (dirty || data[x + Size.x * (y + Size.y * z)] != value)
+                if (dirty || data[x + Size.x * (z + Size.z * y)] != value)
                 {
-                    data[x + Size.x * (y + Size.y * z)] = value;
+                    data[x + Size.x * (z + Size.z * y)] = value;
                     dirty = true;
                 }
             }
@@ -63,14 +63,19 @@ namespace Piksol
             dirty = true;
         }
 
-        public int[] GetData(int index, int length)
+        public int[] GetData(int index, int length, out bool isAir)
         {
+            isAir = true;
             if (index + length > this.data.Length)
                 length -= index + length - this.data.Length;
 
             int[] data = new int[length];
             for (int i = 0; i < length; i++)
+            {
                 data[i] = this.data[index + i];
+                if (data[i] != 0)
+                    isAir = false;
+            }
             return data;
         }
 
@@ -81,6 +86,24 @@ namespace Piksol
 
         public void GenerateTerrain()
         {
+            Debug.Log($"Generating chunk [{x},{y}]");
+            //bool flip = false;
+            //for (int y = 0; y < Size.y; y++)
+            //{
+            //    for (int z = 0; z < Size.z; z++)
+            //    {
+            //        for (int x = 0; x < Size.x; x++)
+            //        {
+            //            int i = x + Size.x * (z + Size.z * y);
+            //            if (i % 2 == (flip ? 1 : 0))
+            //                data[i] = 1;
+            //        }
+            //        flip = !flip;
+            //    }
+            //    flip = !flip;
+            //}
+
+
             for (int x = 0; x < Size.x; x++)
                 for (int z = 0; z < Size.z; z++)
                 {
@@ -127,10 +150,10 @@ namespace Piksol
 
             #endregion
 
-            //World.Instance.TryGetChunk(X, Y + 1, out Chunk n);
-            //World.Instance.TryGetChunk(X + 1, Y, out Chunk e);
-            //World.Instance.TryGetChunk(X, Y - 1, out Chunk s);
-            //World.Instance.TryGetChunk(X - 1, Y, out Chunk w);
+            bool nExists = World.Instance.TryGetChunk(X, Y + 1, out Chunk n);
+            bool eExists = World.Instance.TryGetChunk(X + 1, Y, out Chunk e);
+            bool sExists = World.Instance.TryGetChunk(X, Y - 1, out Chunk s);
+            bool wExists = World.Instance.TryGetChunk(X - 1, Y, out Chunk w);
             
             for (int x = 0; x < Size.x; x++)
                 for (int y = 0; y < Size.y; y++)
@@ -140,7 +163,8 @@ namespace Piksol
                             continue;
 
                         #region East Faces
-                        if (x == Size.x - 1 || this[x + 1, y, z] == 0)
+                        if ((x == Size.x - 1 && eExists && World.IsTransparent(e[0, y, z]))
+                         || (x < Size.x - 1 && World.IsTransparent(this[x + 1, y, z])))
                             AddQuad
                             (
                                 new Vector3(x + 1, y + 0, z + 0),
@@ -152,7 +176,8 @@ namespace Piksol
                         #endregion
 
                         #region West Faces
-                        if (x == 0 || this[x - 1, y, z] == 0)
+                        if ((x == 0 && wExists && World.IsTransparent(w[Size.x - 1, y, z]))
+                         || (x > 0 && World.IsTransparent(this[x - 1, y, z])))
                             AddQuad
                             (
                                 new Vector3(x + 0, y + 0, z + 1),
@@ -188,7 +213,8 @@ namespace Piksol
                         #endregion
 
                         #region North Faces
-                        if (z == Size.z - 1 || this[x, y, z + 1] == 0)
+                        if ((z == Size.z - 1 && nExists && World.IsTransparent(n[x, y, 0]))
+                         || (z < Size.z - 1 && World.IsTransparent(this[x, y, z + 1])))
                             AddQuad
                             (
                                 new Vector3(x + 1, y + 0, z + 1),
@@ -200,7 +226,8 @@ namespace Piksol
                         #endregion
 
                         #region South Faces
-                        if (z == 0 || this[x, y, z - 1] == 0)
+                        if ((z == 0 && sExists && World.IsTransparent(s[x, y, Size.z - 1]))
+                         || (z > 0 && World.IsTransparent(this[x, y, z - 1])))
                             AddQuad
                             (
                                 new Vector3(x + 0, y + 0, z + 0),
@@ -213,12 +240,12 @@ namespace Piksol
                     }
 
             #region Build Mesh
-            mesh = new Mesh
-            {
-                vertices = vertices.ToArray(),
-                uv = uv.ToArray(),
-                triangles = triangles.ToArray(),
-            };
+            mesh = new Mesh();
+            if (vertices.Count > 65535)
+                mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.vertices = vertices.ToArray();
+            mesh.uv = uv.ToArray();
+            mesh.triangles = triangles.ToArray();
             mesh.RecalculateBounds();
             mesh.RecalculateNormals();
             mesh.RecalculateTangents();
@@ -259,8 +286,8 @@ namespace Piksol
                 if (data[i] == -1)
                 {
                     int x = i % Size.x;
-                    int y = (i / Size.x) % Size.y;
-                    int z = i / (Size.y * Size.x);
+                    int z = (i / Size.x) % Size.z;
+                    int y = i / (Size.z * Size.x);
 
                     Graphics.DrawMesh(testObject.Mesh, new Vector3(X * Size.x + x, y, Y * Size.z + z), Quaternion.identity, objectsMaterial, LayerMask.NameToLayer("Blocks"));
                 }

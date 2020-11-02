@@ -8,24 +8,48 @@ namespace Piksol
     [RequireComponent(typeof(Body))]
     public class Player : NetworkBehaviour
     {
+        public enum Movement
+        {
+            Creative,
+            SimplePhysics,
+            RigidbodyPhysics,
+        }
+
         private Body body;
+        private Rigidbody rb;
         private new Camera camera;
         private float pitchDegrees, yawDegrees;
 
         public Transform yaw;
         public Transform pitch;
 
+        public Movement movementMode;
         public float acceleration;
-        public int placing;
-        public float range;
+        public Vector2 jump;
+        public float gravity;
+        private Vector3 velocity;
+        [Range(0, 1)] public float drag;
+
+        [ReadOnly, SerializeField] private bool grounded;
         public Vector2 mouseSensitivity;
         public bool paused;
 
-        [ReadOnly] public Direction blockFace;
-        [ReadOnly] public Vector3Int placePosition;
-        [ReadOnly] public Vector3Int breakPosition;
+        public float range;
 
-        //public delegate void BlockUpdate(Vector3Int block, int id);
+        [ReadOnly, SerializeField] private Direction blockFace;
+
+        public float breakSpeed;
+        public float placeSpeed;
+
+        public int placing;
+        [ReadOnly, SerializeField] private int breaking;
+
+        [ReadOnly, SerializeField] private Vector3Int placePosition;
+        [ReadOnly, SerializeField] private Vector3Int breakPosition;
+        [ReadOnly, SerializeField] private Vector3Int currentBreakPosition;
+
+        [ReadOnly, SerializeField] private float breakCounter;
+        [ReadOnly, SerializeField] private float placeCounter;
 
         private void Start()
         {
@@ -36,16 +60,11 @@ namespace Piksol
 
             if (isLocalPlayer)
             {
-                Debug.Log("Sending chunk requests");
-            
+                Debug.Log("Requesting chunks for new player...");
                 for (int x = -2; x <= 2; x++)
                     for (int y = -2; y <= 2; y++)
-                    {
-                        CmdRequestChunk(x, y, 4096 * 0, 4096);
-                        CmdRequestChunk(x, y, 4096 * 1, 4096);
-                        CmdRequestChunk(x, y, 4096 * 2, 4096);
-                        CmdRequestChunk(x, y, 4096 * 3, 4096);
-                    }
+                        for (int i = 0; i < 4; i++)
+                            CmdRequestChunk(x, y, 4096 * i, 4096, false);
             }
         }
         
@@ -56,9 +75,11 @@ namespace Piksol
         }
 
         [Command]
-        public void CmdRequestChunk(int x, int y, int index, int length)
+        public void CmdRequestChunk(int x, int y, int index, int length, bool sendAir)
         {
-            TargetChunkUpdate(connectionToClient, x, y, World.Instance.RequestChunkData(x, y, index, length), index);
+            if (!World.Instance.RequestChunkData(x, y, index, length, sendAir, out int[] blockData))
+                return;
+            TargetChunkUpdate(connectionToClient, x, y, blockData, index);
         }
 
         [ClientRpc]
@@ -73,38 +94,13 @@ namespace Piksol
             World.Instance.WriteToChunk(x, y, blockData, index);
         }
 
-        public void SetPause(bool pause)
-        {
-            paused = pause;
-            if (pause)
-            {
-                Cursor.lockState = CursorLockMode.None;
-            }
-            else
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-            }
-        }
-
         [Client]
         private void Update()
         {
             if (!isLocalPlayer)
                 return;
 
-            if (Input.GetKeyDown(KeyCode.Escape))
-                SetPause(!paused);
-
-            if (!NetworkClient.isConnected)
-                SetPause(true);
-
-            if (Input.GetKeyDown(KeyCode.F))
-                Screen.fullScreen = !Screen.fullScreen;
-
-            if (paused)
-                return;
-            else
-                Cursor.lockState = CursorLockMode.Locked;
+            #region Mouse Camera Rotation
 
             yawDegrees += Input.GetAxis("Mouse X") * mouseSensitivity.x;
             pitchDegrees -= Input.GetAxis("Mouse Y") * mouseSensitivity.y;
@@ -113,28 +109,120 @@ namespace Piksol
             yaw.localEulerAngles = new Vector3(0, yawDegrees, 0);
             pitch.localEulerAngles = new Vector3(pitchDegrees, 0, 0);
 
-            Vector3 move = default;
-            move += transform.forward * Input.GetAxis("Vertical");
-            move += transform.right * Input.GetAxis("Horizontal");
-            move += transform.up * (Input.GetKey(KeyCode.Space) ? 1 : 0);
-            move -= transform.up * (Input.GetKey(KeyCode.LeftShift) ? 1 : 0);
-            move.Normalize();
-            move *= acceleration;
-            move *= Time.deltaTime;
+            #endregion
 
-            body.ApplyForce(move);
+            #region Check Grounded
+
+            grounded = World.IsCollidable(World.Instance.GetBlock(Vector3Int.FloorToInt(transform.position + new Vector3(0, -1.25f, 0) * body.radius)))
+                    || World.IsCollidable(World.Instance.GetBlock(Vector3Int.FloorToInt(transform.position + new Vector3(+1f, -1.25f, +1f) * body.radius)))
+                    || World.IsCollidable(World.Instance.GetBlock(Vector3Int.FloorToInt(transform.position + new Vector3(-1f, -1.25f, +1f) * body.radius)))
+                    || World.IsCollidable(World.Instance.GetBlock(Vector3Int.FloorToInt(transform.position + new Vector3(-1f, -1.25f, -1f) * body.radius)))
+                    || World.IsCollidable(World.Instance.GetBlock(Vector3Int.FloorToInt(transform.position + new Vector3(+1f, -1.25f, -1f) * body.radius)));
+
+            #endregion
+
+            #region Movement
+
+            switch (movementMode)
+            {
+                case Movement.Creative:
+                    {
+                        body.enabled = true;
+                        body.gravity = 0;
+
+                        Vector3 move = default;
+                        move += transform.forward * Input.GetAxis("Vertical");
+                        move += transform.right * Input.GetAxis("Horizontal");
+                        move += transform.up * (Input.GetKey(KeyCode.Space) ? 1 : 0);
+                        move -= transform.up * (Input.GetKey(KeyCode.LeftShift) ? 1 : 0);
+                        move.Normalize();
+                        move *= acceleration;
+                        move *= Time.deltaTime;
+
+                        body.ApplyForce(move);
+                    }
+                    break;
+                case Movement.SimplePhysics:
+                    {
+                        body.enabled = false;
+
+                        if (grounded)
+                        {
+                            velocity += transform.forward * Input.GetAxis("Vertical");
+                            velocity += transform.right * Input.GetAxis("Horizontal");
+                            velocity.Normalize();
+                            velocity *= acceleration;
+                            velocity *= Time.deltaTime;
+
+                            if (Input.GetKeyDown(KeyCode.Space))
+                                velocity += Vector3.up * jump.y + transform.forward * Input.GetAxis("Vertical") * jump.x;
+                        }
+                        else
+                        {
+                            velocity += Vector3.down * gravity * Time.deltaTime;
+                        }
+                        Vector3 moveX = new Vector3(velocity.x, 0, 0);
+                        Vector3 moveY = new Vector3(0, velocity.y, 0);
+                        Vector3 moveZ = new Vector3(0, 0, velocity.z);
+
+                        //do simple collision detection
+
+                        Vector3Int xBlock = Vector3Int.FloorToInt(transform.position + moveX);
+                        if (!World.IsCollidable(World.Instance.GetBlock(xBlock)))
+                            transform.position += moveX;
+
+                        Vector3Int yBlock = Vector3Int.FloorToInt(transform.position + moveY);
+                        if (!World.IsCollidable(World.Instance.GetBlock(yBlock)))
+                            transform.position += moveY;
+
+                        Vector3Int zBlock = Vector3Int.FloorToInt(transform.position + moveZ);
+                        if (!World.IsCollidable(World.Instance.GetBlock(zBlock)))
+                            transform.position += moveZ;
+
+                        velocity *= Mathf.Pow(drag, Time.deltaTime);
+                    }
+                        
+                    break;
+
+                case Movement.RigidbodyPhysics:
+                    {
+                        body.enabled = false;
+                        body.gravity = grounded ? 0 : gravity;
+
+                        if (rb == null)
+                            rb = GetComponent<Rigidbody>();
+
+                        if (grounded)
+                        {
+                            Vector3 move = default;
+                            move += transform.forward * Input.GetAxis("Vertical");
+                            move += transform.right * Input.GetAxis("Horizontal");
+                            move.Normalize();
+                            move *= acceleration;
+                            move *= Time.deltaTime;
+                            rb.AddForce(move);
+
+                            if (Input.GetKeyDown(KeyCode.Space))
+                                rb.AddForce(Vector3.up * jump.y + transform.forward * Input.GetAxis("Vertical") * jump.x);
+                        }
+                    }
+                    break;
+            }
+
+            #endregion
+
+            #region Break/Place/Pick Block
 
             Ray ray = Camera.main.ScreenPointToRay(new Vector2(Screen.width / 2f, Screen.height / 2f));
 
             blockFace = Direction.None;
-    
             bool validPlace = false;
             bool validBreak = false;
             placePosition = default;
             breakPosition = default;
+            breaking = 0;
 
-
-            VoxelTraverse.Ray(ray, range, Vector3.one, Vector3.zero, (Vector3Int voxel, Vector3 intersection) =>
+            VoxelTraverse.Ray(ray, range, Vector3.one, Vector3.zero, (Vector3Int voxel, Vector3 intersection, Vector3 normal) =>
             {
                 int block = World.Instance.GetBlock(voxel);
 
@@ -147,6 +235,7 @@ namespace Piksol
                 {
                     validBreak = true;
                     breakPosition = voxel;
+                    breaking = block;
 
                     if (validPlace)
                     {
@@ -174,6 +263,8 @@ namespace Piksol
                 return false;
             });
 
+            #endregion
+
             if (Input.GetKeyDown(KeyCode.Alpha1))
                 placing = 1;
             if (Input.GetKeyDown(KeyCode.Alpha2))
@@ -195,15 +286,41 @@ namespace Piksol
             if (Input.GetKeyDown(KeyCode.Alpha0))
                 placing = 10;
 
-            if (Input.GetMouseButtonDown(0) && validBreak)
+            if (breakPosition != currentBreakPosition)
             {
-                //World.Instance.SetBlock(breakPosition, 0);
-                CmdSetBlock(breakPosition, 0);
+                breakCounter = 0;
+                currentBreakPosition = breakPosition;
             }
-            if (Input.GetMouseButtonDown(1) && validPlace && validBreak)
+
+            if (Input.GetMouseButton(0) && validBreak)
             {
-                //World.Instance.SetBlock(placePosition, placing);
-                CmdSetBlock(placePosition, placing);
+                breakCounter += Time.deltaTime * breakSpeed * World.BreakSpeed(breaking);
+                if (breakCounter >= 1)
+                {
+                    breakCounter = 0;
+                    //World.Instance.SetBlock(breakPosition, 0);
+                    CmdSetBlock(breakPosition, 0);
+                }
+            }
+            else
+                breakCounter = 0;
+
+            if (Input.GetMouseButton(1) && validPlace && validBreak)
+            {
+                placeCounter += Time.deltaTime * placeSpeed;
+                if (placeCounter >= 1)
+                {
+                    placeCounter = 0;
+                    //World.Instance.SetBlock(placePosition, placing);
+                    CmdSetBlock(placePosition, placing);
+                }
+            }
+            else 
+                placeCounter = 1;
+
+            if (Input.GetKeyDown(KeyCode.F) && validBreak)
+            {
+                placing = breaking;
             }
         }
     }

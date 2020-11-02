@@ -3,66 +3,94 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Body : NetworkBehaviour
+namespace Piksol
 {
-    public float drag;
-    private Vector3 velocity;
-
-    private void Update()
+    public class Body : NetworkBehaviour
     {
-        if (!isLocalPlayer)
-            return;
-        transform.position += velocity * Time.deltaTime;
-        velocity *= Mathf.Pow(drag, Time.deltaTime);
-    }
+        public float gravity;
+        public float drag;
+        public float radius;
+        [Range(1, 10)] public int maxBounces;
 
-    /// <summary>
-    /// Apply force to the rigidbody at its center.
-    /// </summary>
-    public void ApplyForce(Vector3 force)
-    {
-        velocity += force;
-    }
+        [Range(0, 1)] public float bounciness;
+        [ReadOnly, SerializeField] private Vector3 velocity;
 
-    /// <summary>
-    /// Apply an explosive force to the rigidbody, outwards from a given position.
-    /// </summary>
-    public void ApplyForce(Vector3 position, float force, float falloff)
-    {
-        //The vector which translates the center of the explosion to this rigidbody.
-        Vector3 delta = transform.position - position;
+        public bool disableCollision;
 
-        //The distance between the center of the explosion and this rigidbody.
-        float distance = delta.magnitude;
+        private void Update()
+        {
+            if (!isLocalPlayer)
+                return;
 
-        //Apply falloff to the force
-        force *= 1f / Mathf.Pow(distance, falloff);
+            if (disableCollision)
+            {
+                transform.position += velocity * Time.deltaTime;
+            }
+            else
+            {
+                Vector3 position = transform.position;
 
-        //Normalize the delta to get a unit vector in the direction that the explosion would carry this rigidbody.
-        Vector3 direction = delta / distance;
+                Geom.MovementCollision(position, velocity * Time.deltaTime, radius, bounciness, maxBounces,
+                    (Vector3Int block) => World.IsCollidable(World.Instance.GetBlock(block)),
+                    out Vector3 newPosition, out Vector3 newVelocity);
 
-        //Apply force in the direction with a length equal to the force
-        ApplyForce(direction * force);
-    }
+                transform.position = newPosition;
+                velocity = newVelocity / Time.deltaTime;
+            }
 
-    /// <summary>
-    /// Apply a directional force to the rigidbody from a given position, along a vector.
-    /// </summary>
-    public void ApplyForce(Vector3 position, Vector3 force, float falloff)
-    {
-        //The vector which translates the center of the explosion to this rigidbody.
-        Vector3 delta = transform.position - position;
+            velocity *= Mathf.Pow(drag, Time.deltaTime);
 
-        //The distance between the center of the explosion and this rigidbody.
-        float distance = delta.magnitude;
+            ApplyForce(Vector3.down * gravity * Time.deltaTime);
+        }
 
-        //Apply falloff to the force
-        force *= 1f / Mathf.Pow(distance, falloff);
+        /// <summary>
+        /// Apply force to the rigidbody at its center.
+        /// </summary>
+        public void ApplyForce(Vector3 force)
+        {
+            velocity += force;
+        }
 
-        //Normalize the delta to get a unit vector in the direction that the explosion would carry this rigidbody.
-        Vector3 direction = delta / distance;
+        /// <summary>
+        /// Apply an explosive force to the rigidbody, outwards from a given position.
+        /// </summary>
+        public void ApplyForce(Vector3 position, float force, float falloff)
+        {
+            //The vector which translates the center of the explosion to this rigidbody.
+            Vector3 delta = transform.position - position;
 
-        //Apply force in the direction with a length equal to projected scalar of 'force' along 'direction'
-        ApplyForce(direction * Mathf.Max(Vector3.Dot(direction, force), 0));
+            //The distance between the center of the explosion and this rigidbody.
+            float distance = delta.magnitude;
+
+            //Apply falloff to the force
+            force *= 1f / Mathf.Pow(distance, falloff);
+
+            //Normalize the delta to get a unit vector in the direction that the explosion would carry this rigidbody.
+            Vector3 direction = delta / distance;
+
+            //Apply force in the direction with a length equal to the force
+            ApplyForce(direction * force);
+        }
+
+        /// <summary>
+        /// Apply a directional force to the rigidbody from a given position, along a vector.
+        /// </summary>
+        public void ApplyForce(Vector3 position, Vector3 force, float falloff)
+        {
+            //The vector which translates the center of the explosion to this rigidbody.
+            Vector3 delta = transform.position - position;
+
+            //The distance between the center of the explosion and this rigidbody.
+            float distance = delta.magnitude;
+
+            //Apply falloff to the force
+            force *= 1f / Mathf.Pow(distance, falloff);
+
+            //Normalize the delta to get a unit vector in the direction that the explosion would carry this rigidbody.
+            Vector3 direction = delta / distance;
+
+            //Apply force in the direction with a length equal to projected scalar of 'force' along 'direction'
+            ApplyForce(direction * Mathf.Max(Vector3.Dot(direction, force), 0));
+        }
     }
 }

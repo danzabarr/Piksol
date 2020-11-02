@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Piksol
 {
     [Serializable]
-    public class BlockObject
+    public class BlockObject : ScriptableObject
     {
-        public static readonly float VoxelSize = 1f / 16f;
+        public static readonly float VoxelSize = 1f / 8f;
 
         private static int[,,] bubbles;
         private static List<Vector3> vertices;
@@ -61,6 +61,7 @@ namespace Piksol
 
         public Vector3Int Size => size;
         public Vector3Int InsetSize => size - lowerInset - upperInset;
+        public Vector3 Center => (Vector3)size * .5f * VoxelSize;//(lowerInset + (Vector3)InsetSize * .5f) * VoxelSize;
         public Vector3Int LowerInset
         {
             get => lowerInset;
@@ -158,6 +159,8 @@ namespace Piksol
             }
             set => PaletteName = value?.Name;
         }
+
+       
 
         public BlockObject(int xSize, int ySize, int zSize, string paletteName = null)
         {

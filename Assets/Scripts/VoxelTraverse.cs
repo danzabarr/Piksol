@@ -6,12 +6,17 @@ namespace Piksol
 {
     public class VoxelTraverse : MonoBehaviour
     {
-        public delegate bool Callback(Vector3Int block, Vector3 intersection);
+        public delegate bool Callback(Vector3Int block, Vector3 intersection, Vector3 normal);
 
         public static void Ray(Ray ray, float maxDistance, Vector3 voxelSize, Vector3 voxelOffset, Callback callback)
         {
-            Vector3 p0 = ray.origin;
-            Vector3 p1 = ray.origin + ray.direction * maxDistance;
+            Ray(ray.origin, ray.direction, maxDistance, voxelSize, voxelOffset, callback);
+        }
+
+        public static void Ray(Vector3 rayOrigin, Vector3 rayDirection, float maxDistance, Vector3 voxelSize, Vector3 voxelOffset, Callback callback)
+        {
+            Vector3 p0 = rayOrigin;
+            Vector3 p1 = rayOrigin + rayDirection * maxDistance;
 
             Vector3 Vector3Abs(Vector3 a) => new Vector3(Mathf.Abs(a.x), Mathf.Abs(a.y), Mathf.Abs(a.z));
 
@@ -35,36 +40,44 @@ namespace Piksol
             Vector3 delta = Vector3.Min(Vector3.Scale(rdinv, stp), Vector3.one);
             Vector3 t_max = Vector3Abs(Vector3.Scale((p + Vector3.Max(stp, Vector3.zero) - p0), rdinv));
 
+            Vector3Int square;
+            Vector3 intersection;
+            Vector3 normal;
+            float next_t;
+
             int i = 0;
             while (i < 1000)
             {
                 i++;
-                Vector3Int square = Vector3Int.RoundToInt(p);
+                square = Vector3Int.RoundToInt(p);
 
-                float next_t = Mathf.Min(Mathf.Min(t_max.x, t_max.y), t_max.z);
-                Vector2 intersection = p0 + next_t * rd;
-
-                if (callback(square, intersection))
-                    break;
-
-                if (next_t > 1.0)
-                    break;
+                next_t = Mathf.Min(Mathf.Min(t_max.x, t_max.y), t_max.z);
+                intersection = p0 + next_t * rd;
 
                 if (next_t == t_max.x)
                 {
                     t_max.x += delta.x;
                     p.x += stp.x;
+                    normal = Vector3.right * Mathf.Sign(delta.x);
                 }
                 else if (next_t == t_max.y)
                 {
                     t_max.y += delta.y;
                     p.y += stp.y;
+                    normal = Vector3.up * Mathf.Sign(delta.y);
                 }
                 else
                 {
                     t_max.z += delta.z;
                     p.z += stp.z;
+                    normal = Vector3.forward * Mathf.Sign(delta.z);
                 }
+
+                if (callback(square, intersection, normal))
+                    break;
+
+                if (next_t > 1.0)
+                    break;
             }
         }
 
