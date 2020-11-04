@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class UserControls : MonoBehaviour
 {
-    public static bool paused;
+    public bool paused;
 
     public void Update()
     {
@@ -20,7 +20,7 @@ public class UserControls : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
     }
 
-    public static void SetPause(bool pause)
+    public void SetPause(bool pause)
     {
         paused = pause;
         if (pause)

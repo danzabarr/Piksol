@@ -27,7 +27,7 @@ namespace Piksol
         public float acceleration;
         public Vector2 jump;
         public float gravity;
-        private Vector3 velocity;
+        public Vector3 velocity;
         [Range(0, 1)] public float drag;
 
         [ReadOnly, SerializeField] private bool grounded;
@@ -65,6 +65,8 @@ namespace Piksol
                     for (int y = -2; y <= 2; y++)
                         for (int i = 0; i < 4; i++)
                             CmdRequestChunk(x, y, 4096 * i, 4096, false);
+
+                Cursor.lockState = CursorLockMode.Locked;
             }
         }
         
@@ -123,6 +125,11 @@ namespace Piksol
 
             #region Movement
 
+        }
+
+        [Client]
+        private void FixedUpdate()
+        {
             switch (movementMode)
             {
                 case Movement.Creative:
